@@ -5,6 +5,8 @@
 ## About
 This directory contains the Ansible playbooks and configurations to provision the Gentoo-based platform.
 
+> ⚠️ **Disclaimer:** This is a tailored homelab setup. Some configuration templates (like the VM profiles) have hardcoded hardware addresses (e.g., my specific GPU PCI IDs). If you run this blindly on your hardware, expect things to break beautifully.
+
 ---
 
 ## Usage
