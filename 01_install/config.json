@@ -1,0 +1,51 @@
+{
+  "disks": [
+    {
+      "id": "ata-FTM28N325H_AS21032201382",
+      "type": "ssd",
+      "connection": "sata",
+      "sanitize": true,
+      "rootfs": false
+    },
+    {
+      "id": "ata-SanDisk_SSD_PLUS_480_GB_174780487506",
+      "type": "ssd",
+      "connection": "sata",
+      "sanitize": true,
+      "rootfs": false
+    },
+    {
+      "id": "ata-ST500LM012_HN-M500MBB_S2YJJ9KD505099",
+      "type": "hdd",
+      "connection": "sata",
+      "sanitize": true,
+      "rootfs": false
+    },
+    {
+      "id": "ata-WDC_WD5000BEVT-75ZAT0_WD-WXB0A8922332",
+      "type": "hdd",
+      "connection": "sata",
+      "sanitize": true,
+      "rootfs": false
+    },
+    {
+      "id": "nvme-CT500P3PSSD8_23414428E08C",
+      "type": "nvme",
+      "connection": "pcie",
+      "sanitize": true,
+      "rootfs": true,
+      "cryptroot": true
+    }
+  ],
+  "sanitize_disks": false,
+  "partition_table": "efi",
+  "efi_size": "1024MiB",
+  "boot_size": "4096MiB",
+  "lvm_type": "thin",
+  "zfs_root": true,
+  "gentoo_autobuilds_url": "https://distfiles.gentoo.org/releases/amd64/autobuilds",
+  "gentoo_latest_stage3_txt": "latest-stage3-amd64-hardened-selinux-openrc.txt",
+  "root_authorized_keys": [
+    "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAILYrhMDbPTByz9p2ztenBZ+EhhTw+vlhUV4ifAmnafcI"
+  ]
+}

@@ -1,0 +1,925 @@
+---
+- name: Bootstrap Gentoo from Stage3
+  hosts: gentoo_box
+  gather_facts: no
+
+  vars:
+    ansible_python_interpreter: /usr/bin/python
+    luks_uuid: "6f64865c-2bd9-406c-9951-a3677f8f90a1"
+    luks_dev: "/dev/nvme0n1p3"
+    vg_name: "vg_v88k"
+    lv_name: "lv_thin0"
+    zpool_root: "rpool/ROOT/gentoo"
+    hostname: "gentoo-pve"
+    lang: "en_US.UTF-8"
+    locale: "en_US.UTF-8 UTF-8"
+    timezone: "Etc/UTC"
+    mirror_country: "Brazil"
+
+  tasks:
+    - name: Remove the original make.conf file
+      ansible.builtin.file:
+        path: /etc/portage/make.conf
+        state: absent
+
+    - name: Create the package.license directory structure
+      ansible.builtin.file:
+        path: /etc/portage/package.license
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+
+    - name: Create the make.conf directory structure
+      ansible.builtin.file:
+        path: /etc/portage/make.conf
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+
+    - name: Configure Portage make.conf/00-base.conf
+      ansible.builtin.copy:
+        dest: /etc/portage/make.conf/00-base.conf
+        content: |
+          COMMON_FLAGS="-march=native -O2 -pipe"
+          CFLAGS="${COMMON_FLAGS}"
+          CXXFLAGS="${COMMON_FLAGS}"
+          FCFLAGS="${COMMON_FLAGS}"
+          FFLAGS="${COMMON_FLAGS}"
+          LC_MESSAGES=C.UTF-8
+          RUSTFLAGS="${RUSTFLAGS} -C target-cpu=native"
+          FEATURES="${FEATURES} getbinpkg"
+          FEATURES="${FEATURES} binpkg-request-signature"
+          ACCEPT_LICENSE="-* @FREE @BINARY-REDISTRIBUTABLE"
+          USE="apparmor bash-completion dbus dist-kernel elogind modules-sign policykit secureboot udev"
+          GRUB_PLATFORMS="efi-64"
+          MODULES_SIGN_KEY="/etc/secureboot/kernel_key.pem"
+          MODULES_SIGN_CERT="/etc/secureboot/kernel_key.pem"
+          MODULES_SIGN_HASH="sha512"
+          SECUREBOOT_SIGN_KEY="/etc/secureboot/kernel_key.pem"
+          SECUREBOOT_SIGN_CERT="/etc/secureboot/kernel_key.pem"
+
+    - name: Create directory for Secure Boot keys
+      ansible.builtin.file:
+        path: /etc/secureboot
+        state: directory
+        owner: root
+        group: root
+        mode: '0700'
+
+    - name: Generate Secure Boot and Module Signing Key/Cert
+      ansible.builtin.command: >
+        openssl req -new -noenc -utf8 -sha256 -x509 -outform PEM -out /etc/secureboot/kernel_key.pem -keyout /etc/secureboot/kernel_key.pem -subj "/C=US"
+      args:
+        creates: /etc/secureboot/kernel_key.pem
+
+    - name: Split the recently generated Secure Boot and Module Signing Key/Cert
+      ansible.builtin.command: >
+        sed -n '/-BEGIN PRIVATE KEY-/,/-END PRIVATE KEY-/p' /etc/secureboot/kernel_key.pem > /etc/secureboot/kernel_key.key
+      args:
+        creates: /etc/secureboot/kernel_key.key
+
+    - name: Split the recently generated Secure Boot and Module Signing Key/Cert
+      ansible.builtin.command: >
+        sed -n '/-BEGIN CERTIFICATE-/,/-END CERTIFICATE-/p' /etc/secureboot/kernel_key.pem > /etc/secureboot/kernel_cert.crt
+      args:
+        creates: /etc/secureboot/kernel_cert.crt
+
+    - name: Secure the generated key files permissions
+      ansible.builtin.file:
+        path: "{{ item }}"
+        owner: root
+        group: root
+        mode: '0600'
+      loop:
+        - /etc/secureboot/kernel_key.pem
+        - /etc/secureboot/kernel_key.key
+        - /etc/secureboot/kernel_cert.crt
+
+    - name: Fetch the latest Gentoo ebuild repository snapshot - same as emerge-webrsync
+      community.general.portage:
+        sync: 'web'
+
+    - name: Create the /etc/portage/repos.conf directory
+      ansible.builtin.file:
+        path: /etc/portage/repos.conf
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+
+    - name: Copy the default repos.conf configuration file from system template to /etc/portage/repos.conf/
+      ansible.builtin.copy:
+        src: /usr/share/portage/config/repos.conf
+        dest: /etc/portage/repos.conf/gentoo.conf
+        remote_src: yes
+        owner: root
+        group: root
+        mode: '0644'
+        force: no
+
+    - name: Create the /etc/portage/binrepos.conf directory
+      ansible.builtin.file:
+        path: /etc/portage/binrepos.conf
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+
+    - name: Add gentoobinhost.conf file with fallbacks
+      ansible.builtin.copy:
+        dest: /etc/portage/binrepos.conf/gentoobinhost.conf
+        content: |
+          [gentoo-hardened-br1]
+          priority = 9999
+          sync-uri = https://gentoo.c3sl.ufpr.br/releases/amd64/binpackages/23.0/x86-64_hardened/
+          verify-signature = true
+          location = /var/cache/binhost/gentoo-hardened
+
+          [gentoo-hardened-br2]
+          priority = 9998
+          sync-uri = https://br.mirrors.cicku.me/gentoo/releases/amd64/binpackages/23.0/x86-64_hardened/
+          verify-signature = true
+          location = /var/cache/binhost/gentoo-hardened
+
+          [gentoo-hardened-br3]
+          priority = 9997
+          sync-uri = https://umbriel.br.ext.planetunix.net/pub/gentoo/releases/amd64/binpackages/23.0/x86-64_hardened/
+          verify-signature = true
+          location = /var/cache/binhost/gentoo-hardened
+
+          [gentoo-x86-64-v3-br1]
+          priority = 9996
+          sync-uri = https://gentoo.c3sl.ufpr.br/releases/amd64/binpackages/23.0/x86-64-v3/
+          verify-signature = true
+          location = /var/cache/binhost/gentoo-x86-64-v3
+
+          [gentoo-x86-64-v3-br2]
+          priority = 9995
+          sync-uri = https://br.mirrors.cicku.me/gentoo/releases/amd64/binpackages/23.0/x86-64-v3/
+          verify-signature = true
+          location = /var/cache/binhost/gentoo-x86-64-v3
+
+          [gentoo-x86-64-v3-br3]
+          priority = 9994
+          sync-uri = https://umbriel.br.ext.planetunix.net/pub/gentoo/releases/amd64/binpackages/23.0/x86-64-v3/
+          verify-signature = true
+          location = /var/cache/binhost/gentoo-x86-64-v3
+
+          [gentoo-br1]
+          priority = 9993
+          sync-uri = https://gentoo.c3sl.ufpr.br/releases/amd64/binpackages/23.0/x86-64/
+          verify-signature = true
+          location = /var/cache/binhost/gentoo
+
+          [gentoo-br2]
+          priority = 9992
+          sync-uri = https://br.mirrors.cicku.me/gentoo/releases/amd64/binpackages/23.0/x86-64/
+          verify-signature = true
+          location = /var/cache/binhost/gentoo
+
+          [gentoo-br3]
+          priority = 9991
+          sync-uri = https://umbriel.br.ext.planetunix.net/pub/gentoo/releases/amd64/binpackages/23.0/x86-64/
+          verify-signature = true
+          location = /var/cache/binhost/gentoo
+
+    - name: Call getuto to set up the necessary keyring for binpkg verification
+      ansible.builtin.command: >
+        getuto
+
+    - name: Sync repositories and update world
+      community.general.portage:
+        package: '@world'
+        update: true
+        deep: true
+        sync: true
+        withbdeps: true
+        newuse: true
+      tags: world
+
+    - name: Emerge mirrorselect and cpuid2cpuflags
+      community.general.portage:
+        package:
+          - app-portage/mirrorselect
+          - app-portage/cpuid2cpuflags
+        state: present
+
+    - name: Automatically benchmark and select the fastest sync mirror
+      ansible.builtin.shell: >
+        mirrorselect -s3 -b10 -c "{{ mirror_country }}" -o -D > /etc/portage/make.conf/10-mirrors.conf
+      args:
+        creates: /etc/portage/make.conf/10-mirrors.conf
+
+    - name: Generate CPU_FLAGS_ with cpuid2cpuflags
+      ansible.builtin.shell: >
+        echo "*/* $(cpuid2cpuflags)" > /etc/portage/package.use/00cpu-flags
+      args:
+        creates: /etc/portage/package.use/00cpu-flags
+
+    - name: Set the Timezone
+      ansible.builtin.shell: >
+        ln -sf ../usr/share/zoneinfo/{{ timezone }} /etc/localtime
+      args:
+        creates:
+          /etc/localtime
+
+    - name: Add locale
+      ansible.builtin.copy:
+        dest: /etc/locale.gen
+        content: |
+          {{ locale }}
+      notify:
+        - Run locale-gen
+
+    - name: Add lang to /etc/env.d/02locale
+      ansible.builtin.copy:
+        dest: /etc/env.d/02locale
+        content: |
+          LANG="{{ lang }}"
+          LC_COLLATE="C.UTF-8"
+
+    - name: Set a hostname
+      ansible.builtin.hostname:
+        name: "{{ hostname }}"
+        use: openrc
+
+    - name: Add package.use/10system
+      ansible.builtin.copy:
+        dest: /etc/portage/package.use/10system
+        content: |
+          sys-kernel/installkernel dracut grub
+          sys-boot/grub device-mapper
+          sys-fs/lvm2 lvm thin
+
+          app-emulation/libvirt firewalld libssh libssh2 lvm nbd nfs numa parted pcap virtiofsd zfs
+          net-firewall/nftables json python xtables
+          net-dns/dnsmasq script
+          sys-block/parted device-mapper
+
+          app-emulation/qemu io-uring nfs numa spice ssh usb usbredir
+
+          sys-fs/squashfs-tools lzma
+          sys-libs/libcap static-libs
+
+    - name: Create the /etc/dracut.conf.d directory
+      ansible.builtin.file:
+        path: /etc/dracut.conf.d
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+
+    - name: Add /etc/dracut.conf.d/00-installkernel.conf
+      ansible.builtin.copy:
+        dest: /etc/dracut.conf.d/00-installkernel.conf
+        content: |
+          kernel_cmdline=" root=ZFS={{ zpool_root }} "
+
+    - name: Add package.license/00firmware_microcode
+      ansible.builtin.copy:
+        dest: /etc/portage/package.license/00firmware_microcode
+        content: |
+          sys-firmware/intel-microcode intel-ucode
+          sys-kernel/linux-firmware linux-fw-redistributable
+
+    - name: Make sure package sys-kernel/gentoo-kernel-bin is NOT installed
+      community.general.portage:
+        package: sys-kernel/gentoo-kernel-bin
+        state: absent
+
+    - name: Make sure package sys-kernel/gentoo-kernel is installed
+      community.general.portage:
+        package: sys-kernel/gentoo-kernel
+        state: present
+
+    - name: Set the kernel symlink with eselect - be careful, we SHOULD have only one kernel by now, though
+      ansible.builtin.command: >
+        eselect kernel set 1
+
+    - name: Emerge required packages
+      community.general.portage:
+        package:
+          - sys-kernel/linux-firmware
+          - sys-firmware/intel-microcode
+          - sys-kernel/installkernel
+          - net-misc/netifrc
+          - net-misc/dhcpcd
+          - app-admin/sysklogd
+          - sys-process/cronie
+          - app-shells/bash-completion
+          - net-misc/chrony
+          - sys-block/io-scheduler-udev-rules
+          - sys-fs/e2fsprogs
+          - sys-fs/dosfstools
+          - sys-fs/zfs
+          - sys-fs/cryptsetup
+          - sys-fs/lvm2
+          - sys-boot/grub
+          - app-emulation/libvirt
+          - net-firewall/firewalld
+          - app-containers/incus
+          - app-emulation/qemu
+          - dev-vcs/git
+          - app-crypt/sbctl
+          - app-crypt/tpm2-tools
+          - app-crypt/tpm2-tss
+          - app-eselect/eselect-repository
+          - sys-apps/etckeeper
+          - sys-boot/shim
+          - sys-boot/mokutil
+          - dev-libs/libisoburn
+        state: present
+
+    - name: Add net.br0 configuration
+      ansible.builtin.copy:
+        dest: /etc/conf.d/net
+        content: |
+          config_enp0s31f6="null"
+          bridge_br0="enp0s31f6"
+
+          config_br0="192.168.15.2/24 fd5d:d97c:25d5:1::2/64"
+          routes_br0="default via 192.168.15.1
+          default via fe80::920a:62ff:fe4f:28d0"
+          dns_servers_br0="127.0.0.1 ::1"
+
+          bridge_forward_delay_br0=0
+          bridge_hello_time_br0=1000
+
+    - name: Enable net.br0
+      ansible.builtin.shell: >
+        ln -s /etc/init.d/net.lo /etc/init.d/net.br0 2>/dev/null; rc-update add net.br0 default
+
+    - name: Add ZFS modules to Dracut's initramfs
+      ansible.builtin.copy:
+        dest: /etc/dracut.conf.d/10-zfs.conf
+        content: |
+          nofsck="yes"
+          add_dracutmodules+=" zfs "
+
+    - name: Emerge rebuild modules
+      ansible.builtin.shell: >
+        emerge @module-rebuild
+      tags: module_rebuild
+
+    - name: Emerge config gentoo-kernel
+      ansible.builtin.shell: >
+        emerge --config sys-kernel/gentoo-kernel
+
+    - name: Add default GRUB config
+      ansible.builtin.copy:
+        dest: /etc/default/grub
+        content: |
+          GRUB_DISTRIBUTOR="Gentoo"
+          GRUB_CMDLINE_LINUX="rd.luks.allow-discards root=ZFS={{ zpool_root }} rd.luks.uuid={{ luks_uuid }} rd.lvm.vg={{ vg_name }} intel_iommu=on pcie_aspm=off libata.force=noncq,1.5G intremap=no_x2apic_optout rfkill.default_state=0 acpi_osi=! acpi_osi=\"Windows 2022\" acpi_os_name=\"Microsoft Windows NT\" pci=noaer mitigations=auto,nosmt processor.max_cstate=1 intel_idle.max_cstate=0 cpufreq.default_governor=performance"
+          GRUB_DISABLE_LINUX_PARTUUID=false
+        backup: true
+
+    - name: Generate ZFS Host ID
+      ansible.builtin.command: >
+        zgenhostid
+      args:
+        creates: /etc/hostid
+
+    - name: Enable the GURU repo
+      ansible.builtin.command: >
+        eselect repository enable guru
+
+    - name: Sync after enabling the GURU repo
+      community.general.portage:
+        sync: true
+      tags: sync
+
+    - name: Unmask clevis by accepting it's ~amd64 keyword
+      ansible.builtin.copy:
+        dest: /etc/portage/package.accept_keywords/10clevis
+        content: |
+          app-crypt/clevis::guru ~amd64
+          dev-libs/luksmeta::guru ~amd64
+
+    - name: Emerge clevis
+      community.general.portage:
+        package:
+          - app-crypt/clevis
+        state: present
+
+    - name: Emerge config gentoo-kernel
+      ansible.builtin.shell: >
+        emerge --config sys-kernel/gentoo-kernel
+
+    - name: Install sbctl-init
+      ansible.builtin.copy:
+        src: files/sbctl-init
+        dest: /etc/init.d/sbctl-init
+        owner: root
+        group: root
+        mode: '0755'
+        force: no
+
+    - name: Add grub_gpg
+      ansible.builtin.copy:
+        dest: /root/grub_gpg
+        content: |
+          # See warning!
+          %no-protection
+
+          # As of GRUB 2.12, only DSA and RSA keys are supported.
+          Key-Type: RSA
+          Key-Length: 4096
+
+          # GRUB only needs to verify signatures.
+          Key-Usage: sign
+
+          # Information to help identify this key.
+          Name-Real: grub
+          Name-Comment: This key is used to sign files for GRUB.
+
+          # (0) means to never expire.
+          Expire-Date: 0
+
+          %commit
+
+    - name: Sign with GRUB GPG
+      ansible.builtin.shell: |
+        set -e
+        grub_sign() {
+          local -a files=()
+          files=($(find /boot -regextype posix-extended -regex '.*(\.cfg|\.lst|\.mod|vmlinuz.*|init.*|grubenv|-uc\.img|\.efi)$' | sed -En '/\.sig$/! p'))
+
+          #echo "Signing all files required for boot with the GRUB GPG key..."
+
+          rm -f "${files[@]/%/.sig}"
+
+          for file in "${files[@]}"; do
+            gpg --batch --yes -bu "grub" --digest-algo SHA512 "${file[@]}"
+          done
+
+          return 0
+        }
+        gpg --batch --full-gen-key /root/grub_gpg
+        gpg --yes -o /tmp/grub_gpg.pub --export grub
+        grub-install --removable --disable-shim-lock --pubkey=/tmp/grub_gpg.pub --modules="pgp gcry_sha512 gcry_rsa" --efi-directory=/efi
+        sbctl sign -s /efi/EFI/BOOT/BOOTX64.EFI
+        grub_sign
+
+    - name: GRUB mkconfig
+      ansible.builtin.shell: |
+        set -e
+        grub-mkconfig -o /boot/grub/grub.cfg
+
+    - name: OpenRC required services
+      ansible.builtin.service:
+        name: "{{ item.service_name }}"
+        runlevel: "{{ item.runlevel }}"
+      loop:
+        - { service_name: 'dmcrypt', runlevel: 'boot' }
+        - { service_name: 'lvm', runlevel: 'boot' }
+        - { service_name: 'zfs-import', runlevel: 'boot' }
+        - { service_name: 'zfs-mount', runlevel: 'boot' }
+        - { service_name: 'zfs-load-key', runlevel: 'boot' }
+        - { service_name: 'zfs-share', runlevel: 'default' }
+        - { service_name: 'zfs-zed', runlevel: 'default' }
+        - { service_name: 'incus', runlevel: 'default' }
+        - { service_name: 'libvirtd', runlevel: 'default' }
+        - { service_name: 'firewalld', runlevel: 'default' }
+        - { service_name: 'cronie', runlevel: 'default' }
+        - { service_name: 'sshd', runlevel: 'default' }
+        - { service_name: 'sysklogd', runlevel: 'default' }
+        - { service_name: 'chronyd', runlevel: 'default' }
+        - { service_name: 'sbctl-init', runlevel: 'default' }
+
+    - name: Ensure needed services are running
+      ansible.builtin.service:
+        name: "{{ item }}"
+        state: started
+      loop:
+        - libvirtd
+        - incus
+      tags: 
+        - incus
+        - libvirt
+
+    - name: Configure subuid for root/Incus
+      ansible.builtin.lineinfile:
+        path: /etc/subuid
+        line: "root:1000000:1000000000"
+        create: true
+        mode: '0644'
+
+    - name: Configure subgid for root/Incus
+      ansible.builtin.lineinfile:
+        path: /etc/subgid
+        line: "root:1000000:1000000000"
+        create: true
+        mode: '0644'
+
+    - name: Init incus with a preseed file
+      ansible.builtin.command:
+        cmd: incus admin init --preseed
+        stdin: "{{ lookup('ansible.builtin.file', 'files/incus/preseed.yaml') }}"
+      changed_when: false
+      tags:
+        - incus
+
+    - name: Set the pi-hole incus profile
+      ansible.builtin.command:
+        cmd: incus profile create pihole
+        stdin: "{{ lookup('ansible.builtin.file', 'files/incus/profiles/pihole.yaml') }}"
+      register: incus_profile_pihole
+      failed_when: 
+        - incus_profile_pihole.rc != 0
+        - "'already exists' not in incus_profile_pihole.stderr and 'already exists' not in incus_profile_pihole.stdout"
+      changed_when: incus_profile_pihole.rc == 0
+      tags: incus
+
+    - name: Set the atlas incus profile
+      ansible.builtin.command:
+        cmd: incus profile create atlas
+        stdin: "{{ lookup('ansible.builtin.file', 'files/incus/profiles/atlas.yaml') }}"
+      register: incus_profile_atlas
+      failed_when: 
+        - incus_profile_atlas.rc != 0
+        - "'already exists' not in incus_profile_atlas.stderr and 'already exists' not in incus_profile_atlas.stdout"
+      changed_when: incus_profile_pihole.rc == 0
+      tags: incus
+
+    - name: Create pi-hole container
+      ansible.builtin.command:
+        cmd: >
+          incus launch images:debian/13/cloud pihole --profile default --profile pihole
+      register: incus_launch_pihole
+      failed_when: 
+        - incus_profile_pihole.rc != 0
+        - "'already exists' not in incus_profile_pihole.stderr and 'already exists' not in incus_profile_pihole.stdout"
+      changed_when: incus_profile_pihole.rc == 0
+      tags: incus
+
+    - name: Create atlas container
+      ansible.builtin.command:
+        cmd: >
+          incus launch images:debian/13/cloud atlas --profile default --profile atlas
+      register: incus_launch_atlas
+      failed_when: 
+        - incus_profile_atlas.rc != 0
+        - "'already exists' not in incus_profile_atlas.stderr and 'already exists' not in incus_profile_atlas.stdout"
+      changed_when: incus_profile_pihole.rc == 0
+      tags: incus
+
+    - name: Create the /var/lib/libvirt/images directory
+      ansible.builtin.file:
+        path: /var/lib/libvirt/images
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+
+    - name: Download CachyOS
+      ansible.builtin.get_url:
+        url: https://cdn77.cachyos.org/ISO/desktop/260426/cachyos-desktop-linux-260426.iso
+        dest: /var/lib/libvirt/images/cachyos-desktop-linux-260426.iso
+        mode: '0644'
+
+    - name: Download Arch
+      ansible.builtin.get_url:
+        url: https://archlinux.c3sl.ufpr.br/iso/2026.06.01/archlinux-2026.06.01-x86_64.iso
+        dest: /var/lib/libvirt/images/archlinux-2026.06.01-x86_64.iso
+        mode: '0644'
+
+    - name: Create VM LV
+      community.general.lvol:
+        vg: "{{ vg_name }}"
+        thinpool: "{{ lv_name }}"
+        lv: arch
+        size: 400g
+        state: present
+
+    - name: Define Arch VM
+      community.libvirt.virt:
+        command: define
+        xml: "{{ lookup('template', 'files/templates/libvirt/vm_arch.xml.j2') }}"
+      vars:
+        vm_name: "arch"
+        vm_memory: "16777216"
+        vm_vcpus: "4"
+        vm_iso: "archlinux-2026.06.01-x86_64.iso"
+        vm_storage: "/dev/{{ vg_name }}/arch"
+      tags: arch_vm
+
+    - name: Ensure the Arch VM is running
+      community.libvirt.virt:
+        name: "arch"
+        state: running
+      tags: arch_vm
+
+    - name: Check sbctl to see if secureboot is enabled
+      ansible.builtin.shell: sbctl status | grep -q "Secure Boot:[[:space:]]✓ Enabled"
+      register: sbctl_status_secureboot
+      changed_when: false
+      failed_when: false
+      tags: clevis
+
+    - name: Clevis setup
+      ansible.builtin.pause:
+        prompt: |
+          SSH into your machine and issue this command:
+          "clevis luks bind -d {{ luks_dev }} tpm2 '{"pcr_bank":"sha256","pcr_ids":"0,2,3,5,6,7"}'"
+          Type your LUKS password when asked, come back here and press ENTER to continue.
+          If you get an error about SHA256, try changing to sha1 above.
+          If you are rebinding issue this first:
+          "clevis luks unbind -d {{ luks_dev }} -s 1"
+      when: sbctl_status_secureboot.rc == 0
+      tags: clevis
+
+  handlers:
+    - name: Run locale-gen
+      ansible.builtin.command: >
+        locale-gen
+    - name: Restart Incus service
+      ansible.builtin.service:
+        name: incus
+        state: restarted
+      tags: incus
+
+- name: Configure Atlas
+  hosts: atlas
+  gather_facts: yes
+
+  vars:
+    ansible_python_interpreter: /usr/bin/python3
+    full_docker_sync: false
+
+  vars_files:
+    - env.yaml
+
+  tasks:
+    - name: Install needed packages
+      ansible.builtin.apt:
+        pkg:
+          - ca-certificates
+          - curl
+          - wget
+          - cron
+          - rsync
+
+    - name: Ensure the keyring path exists with the correct permissions
+      ansible.builtin.file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: '0755'
+
+    - name: Download Docker Debian GPG key
+      ansible.builtin.get_url:
+        url: https://download.docker.com/linux/debian/gpg
+        dest: /etc/apt/keyrings/docker.asc
+        mode: '0644'
+
+    - name: Add Docker repository
+      ansible.builtin.deb822_repository:
+        name: docker
+        types: [deb]
+        uris: [https://download.docker.com/linux/debian]
+        suites: ["{{ ansible_facts['distribution_release'] }}"]
+        components: [stable]
+        architectures: ["{{ 'amd64' if ansible_facts['architecture'] == 'x86_64' else ansible_facts['architecture'] }}"]
+        signed_by: /etc/apt/keyrings/docker.asc
+
+    - name: Update APT cache
+      ansible.builtin.apt:
+        update_cache: yes
+
+    - name: Install Docker packages
+      ansible.builtin.apt:
+        pkg:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-buildx-plugin
+          - docker-compose-plugin
+          - python3-docker
+        update_cache: yes
+
+    - name: Ensure Docker service is running
+      ansible.builtin.service:
+        name: docker
+        state: started
+        enabled: true
+
+    - name: Ensure the /opt/docker dir exists
+      ansible.builtin.file:
+        path: /opt/docker
+        state: directory
+        mode: '0755'
+
+    - name: Sync docker files
+      ansible.builtin.synchronize:
+        src: files/backup/docker/
+        dest: /opt/docker/
+        rsync_opts: |
+          {{
+            [
+              '--exclude=**/vaultwarden_data/',
+              '--exclude=**/data/',
+              '--exclude=.env'
+            ]
+            if not full_docker_sync
+            else
+            []
+          }}
+
+    - name: Create Caddy .env file with the DuckDNS token
+      ansible.builtin.copy:
+        dest: /opt/docker/caddy/.env
+        content: "DUCKDNS_TOKEN={{ duckdns_token }}"
+        mode: '0600'
+
+    - name: Create /opt/duckdns dir
+      ansible.builtin.file:
+        path: /opt/duckdns
+        state: directory
+        mode: '0755'
+
+    - name: Create DuckDNS update script
+      ansible.builtin.copy:
+        dest: /opt/duckdns/update.sh
+        mode: '0755'
+        content: |
+          #!/usr/bin/env/bash
+          # Managed by Ansible
+          echo url="https://www.duckdns.org/update?domains=furtadocarrega&token={{ duckdns_token }}&ip=" | curl -k -o /opt/duckdns/log -K -
+
+    - name: Create DuckDNS Cron job
+      ansible.builtin.cron:
+        name: "Update DuckDNS IP"
+        minute: "*/5"
+        job: "/opt/duckdns/update.sh >/dev/null 2>&1"
+
+    - name: Force systemd-resolved config file
+      ansible.builtin.copy:
+        dest: /etc/systemd/resolved.conf
+        backup: yes
+        content: |
+          # Managed by Ansible
+          [Resolve]
+          DNS=192.168.15.4 fd5d:d97c:25d5:1::4
+          Domains=~.
+          DNSStubListener=yes
+          DNSStubListenerExtra=172.20.0.1
+          DNSStubListenerExtra=fdcc:ad94:bacf:6120::1
+          Cache=no
+      notify: Restart systemd-resolved
+
+    - name: Create caddy_net network with static IPv4 and IPv6
+      community.docker.docker_network:
+        name: caddy_net
+        state: present
+        enable_ipv6: true
+        ipam_config:
+          - subnet: "172.20.0.0/24"
+            gateway: "172.20.0.1"
+          - subnet: "fdcc:ad94:bacf:6120::/64"
+            gateway: "fdcc:ad94:bacf:6120::1"
+
+    - name: Change Docker DNS
+      ansible.builtin.copy:
+        dest: /etc/docker/daemon.json
+        mode: '0644'
+        content: |
+          {
+            "ipv6": true,
+            "fixed-cidr-v6": "fdcc:ad94:bacf:6110::/64",
+            "dns": ["192.168.15.4", "fd5d:d97c:25d5:1::4"]
+          }
+      notify: Restart Docker
+
+    - name: Create Caddyfile
+      ansible.builtin.copy:
+        dest: /opt/docker/caddy/Caddyfile
+        mode: '0644'
+        content: |
+          furtadocarrega.duckdns.org, *.furtadocarrega.duckdns.org {
+            tls {
+              dns duckdns {{ duckdns_token }}
+              resolvers 8.8.8.8 8.8.4.4
+            }
+            handle /* {
+              root * /srv/www
+              file_server
+            }
+          }
+          jellyfin.furtadocarrega.duckdns.org {
+            reverse_proxy jellyfin:8096
+          }
+          linkding.furtadocarrega.duckdns.org {
+            reverse_proxy linkding:9090
+          }
+          navidrome.furtadocarrega.duckdns.org {
+            reverse_proxy navidrome:4533
+          }
+          nextcloud.furtadocarrega.duckdns.org {
+            reverse_proxy nextcloud:11000
+          }
+          silverbullet.furtadocarrega.duckdns.org {
+            reverse_proxy linkding:3000
+          }
+          vaultwarden.furtadocarrega.duckdns.org {
+            reverse_proxy vaultwarden:80
+          }
+          wg-easy.furtadocarrega.duckdns.org {
+            reverse_proxy wg-easy:51821
+          }
+      notify: Reload Caddyfile
+
+    - name: Ensure Docker services are running
+      community.docker.docker_compose_v2:
+        project_src: "/opt/docker/{{ item }}"
+        state: present
+      loop:
+        - caddy
+        - jellyfin
+        - vaultwarden
+        - wg-easy
+
+  handlers:
+    - name: Restart systemd-resolved
+      ansible.builtin.service:
+        name: systemd-resolved
+        state: restarted
+        enabled: yes
+    - name: Restart Docker
+      ansible.builtin.service:
+        name: docker
+        state: restarted
+    - name: Reload Caddyfile
+      ansible.builtin.command: docker exec caddy caddy reload --config /etc/caddy/Caddyfile
+
+- name: Configure Pi-hole
+  hosts: pihole
+  gather_facts: yes
+
+  vars:
+    ansible_python_interpreter: /usr/bin/python3
+
+  vars_files:
+    - env.yaml
+
+  tasks:
+    - name: Check pihole-FTL command
+      ansible.builtin.shell: which pihole-FTL
+      register: pihole_status
+      changed_when: false
+      failed_when: false
+
+    - name: Clevis setup
+      ansible.builtin.pause:
+        prompt: |
+          SSH into your your Pi-hole instance and proceed with the installation using this command:
+          curl -sSL https://install.pi-hole.net | bash
+      when: pihole_status.rc != 0
+
+    - name: Install needed packages
+      ansible.builtin.apt:
+        pkg:
+          - dnscrypt-proxy
+
+    - name: Copy dnscrypt-proxy config
+      ansible.builtin.copy:
+        src: files/dnscrypt-proxy/dnscrypt-proxy.toml
+        dest: /etc/dnscrypt-proxy/dnscrypt-proxy.toml
+        backup: true
+    
+    - name: Copy dnscrypt-proxy cloaking-rules
+      ansible.builtin.copy:
+        src: files/dnscrypt-proxy/cloaking-rules.txt
+        dest: /etc/dnscrypt-proxy/cloaking-rules.txt
+        backup: true
+
+    - name: Copy dnscrypt-proxy forwarding-rules
+      ansible.builtin.copy:
+        src: files/dnscrypt-proxy/forwarding-rules.txt
+        dest: /etc/dnscrypt-proxy/forwarding-rules.txt
+        backup: true
+
+    - name: Ensure the /etc/systemd/system/dnscrypt-proxy.socket.d dir exists
+      ansible.builtin.file:
+        path: /etc/systemd/system/dnscrypt-proxy.socket.d
+        state: directory
+        mode: '0755'
+
+    - name: Set the dnscrypt-proxy systemd override
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/dnscrypt-proxy.socket.d/override.conf
+        mode: '0644'
+        content: |
+          [Socket]
+          ListenStream=
+          ListenDatagram=
+          ListenStream=127.0.0.1:5053
+          ListenDatagram=127.0.0.1:5053
+      notify: Restart dnscrypt-proxy socket
+
+  handlers:
+    - name: Restart dnscrypt-proxy socket
+      ansible.builtin.systemd_service:
+        name: dnscrypt-proxy.socket
+        state: reloaded

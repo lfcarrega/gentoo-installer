@@ -1,0 +1,2 @@
+*.furtadocarrega.duckdns.org 192.168.15.3
+*.furtadocarrega.duckdns.org fd5d:d97c:25d5:1::3

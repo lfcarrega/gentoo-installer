@@ -1,0 +1,12 @@
+# .gitignore
+
+02_configure/files/backup/
+
+.env
+env.yaml
+secrets.yaml
+
+*.tar.gz
+*.tgz
+*.db
+*.sqlite3

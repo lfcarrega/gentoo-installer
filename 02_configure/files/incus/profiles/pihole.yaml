@@ -1,0 +1,30 @@
+config:
+  cloud-init.user-data: |
+    #cloud-config
+    package_update: true
+    package_upgrade: true
+    packages:
+      - openssh-server
+    users:
+      - name: root
+        ssh_authorized_keys:
+          - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAII1M4Qb3ZEKfOj/E8Ml35LGsu6ephDWPfHwOr7UWnd5K
+  cloud-init.network-config: |
+    version: 2
+    ethernets:
+      eth0:
+        dhcp4: false
+        dhcp6: false
+        addresses:
+          - 192.168.15.4/24
+          - fd5d:d97c:25d5:1::4/64
+        gateway4: 192.168.15.1
+        gateway6: fe80::920a:62ff:fe4f:28d0
+        nameservers:
+          addresses:
+            - 1.1.1.1
+            - 1.0.0.1
+description: ""
+devices: {}
+name: pihole
+used_by: []

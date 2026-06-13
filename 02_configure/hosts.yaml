@@ -1,0 +1,14 @@
+all:
+  hosts:
+    gentoo_box:
+      ansible_host: 192.168.15.2
+      ansible_port: 22
+      ansible_user: root
+    atlas:
+      ansible_host: 192.168.15.3
+      ansible_port: 22
+      ansible_user: root
+    pihole:
+      ansible_host: 192.168.15.4
+      ansible_port: 22
+      ansible_user: root

@@ -1,0 +1,27 @@
+config: {}
+networks: []
+storage_pools:
+- config:
+    source: rpool/incus
+  description: ""
+  name: default
+  driver: zfs
+storage_volumes: []
+profiles:
+- config: {}
+  description: ""
+  devices:
+    eth0:
+      name: eth0
+      nictype: bridged
+      parent: br0
+      type: nic
+    root:
+      path: /
+      pool: default
+      type: disk
+  name: default
+  project: default
+projects: []
+certificates: []
+cluster: null

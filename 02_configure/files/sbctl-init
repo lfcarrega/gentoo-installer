@@ -1,0 +1,64 @@
+#!/sbin/openrc-run
+
+description="Initialize sbctl, import custom kernel keys, enroll to UEFI, and sign EFI binaries"
+
+KEY_PATH="/etc/secureboot/kernel_key.key"
+CERT_PATH="/etc/secureboot/kernel_cert.crt"
+EFI_DIR="/efi"
+
+depend() {
+    need localmount
+}
+
+start() {
+    ebegin "Checking sbctl status"
+
+    # 1. Check if sbctl has been initialized/installed into firmware
+    if ! sbctl status | grep -q "sbctl is installed"; then
+        einfo "sbctl is not installed. Beginning setup..."
+
+        # Create base keys if they don't exist on disk yet
+        if [ ! -d "/var/lib/sbctl/keys" ]; then
+            einfo "Creating base sbctl keys..."
+            sbctl create-keys >/dev/null 2>&1
+        fi
+
+        # Import your custom kernel key/cert into the local staging database
+        if [ -f "$KEY_PATH" ] && [ -f "$CERT_PATH" ]; then
+            einfo "Importing custom kernel key into sbctl db staging..."
+            sbctl import-keys --db-key "$KEY_PATH" --db-cert "$CERT_PATH" >/dev/null
+        else
+            ewarn "Custom key or cert not found. Enrolling without it."
+        fi
+
+    else
+        einfo "sbctl keys installed."
+    fi
+
+    if sbctl status | grep -q "Setup Mode:[[:space:]]✗ Enabled"; then
+        # ENROLL THE KEYS TO NVRAM
+        # Include -m to keep Microsoft OEM keys so your GPU / Option ROMs still boot!
+        einfo "Enrolling keys directly into UEFI firmware NVRAM..."
+        sbctl enroll-keys >/dev/null 2>&1
+        if [ $? -ne 0 ]; then
+            einfo "Not in SETUP mode, skipping enrollment."
+        fi
+    else
+        einfo "UEFI keys already enrolled."
+    fi
+
+    # 2. Find and track EFI files
+    einfo "Checking for unsigned EFI files under $EFI_DIR..."
+    find "$EFI_DIR" -type f -name "*.efi" 2>/dev/null | while read -r efi_file; do
+        if ! sbctl list-files | grep -q "$efi_file"; then
+            einfo "Enrolling $efi_file into sbctl tracking..."
+            sbctl sign -s "$efi_file" >/dev/null 2>&1
+        fi
+    done
+
+    # 3. Sign everything
+    einfo "Signing all enrolled EFI files..."
+    sbctl sign-all
+
+    eend $?
+}
