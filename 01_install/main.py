@@ -417,19 +417,19 @@ def setup_secondary_pools(cfg):
 def main():
   cfg = Config()
 
-  setup_secondary_pools(cfg)
+  if cfg.get("sanitize_disks"):
+    print("[INFO] Disk sanitization enabled, triggering SECURE ERASE commands")
+    general_sanitizer(cfg)
+  setup_storage(cfg)
+  stage3_local = next(glob.iglob("stage3-*.tar.xz"), None)
+  if not stage3_local:
+    stage3_download(cfg)
+  else:
+    print(f"[INFO] Found local stage3 ({stage3_local}), copying to /mnt/gentoo...")
+    shutil.copy(stage3_local, f"/mnt/gentoo/{stage3_local}")
+  stage3_prepare(cfg)
 
-  # if cfg.get("sanitize_disks"):
-  #   print("[INFO] Disk sanitization enabled, triggering SECURE ERASE commands")
-  #   general_sanitizer(cfg)
-  # setup_storage(cfg)
-  # stage3_local = next(glob.iglob("stage3-*.tar.xz"), None)
-  # if not stage3_local:
-  #   stage3_download(cfg)
-  # else:
-  #   print(f"[INFO] Found local stage3 ({stage3_local}), copying to /mnt/gentoo...")
-  #   shutil.copy(stage3_local, f"/mnt/gentoo/{stage3_local}")
-  # stage3_prepare(cfg)
+  setup_secondary_pools(cfg)
 
 if __name__ == "__main__":
   elevate_privileges()
