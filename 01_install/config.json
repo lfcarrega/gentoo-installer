@@ -5,28 +5,36 @@
       "type": "ssd",
       "connection": "sata",
       "sanitize": true,
-      "rootfs": false
+      "rootfs": false,
+      "encrypt": true,
+      "zpool": "ssd"
     },
     {
       "id": "ata-SanDisk_SSD_PLUS_480_GB_174780487506",
       "type": "ssd",
       "connection": "sata",
       "sanitize": true,
-      "rootfs": false
+      "rootfs": false,
+      "encrypt": true,
+      "zpool": "ssd"
     },
     {
       "id": "ata-ST500LM012_HN-M500MBB_S2YJJ9KD505099",
       "type": "hdd",
       "connection": "sata",
       "sanitize": true,
-      "rootfs": false
+      "rootfs": false,
+      "encrypt": true,
+      "zpool": "hdd"
     },
     {
       "id": "ata-WDC_WD5000BEVT-75ZAT0_WD-WXB0A8922332",
       "type": "hdd",
       "connection": "sata",
       "sanitize": true,
-      "rootfs": false
+      "rootfs": false,
+      "encrypt": true,
+      "zpool": "hdd"
     },
     {
       "id": "nvme-CT500P3PSSD8_23414428E08C",

@@ -13,6 +13,7 @@ import time
 import threading
 import urllib.request
 
+from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -307,20 +308,128 @@ def stage3_prepare(cfg):
 
   print("[INFO] Now you can reboot the system.")
 
+def setup_secondary_pools(cfg):
+    pools = defaultdict(list)
+    for d in cfg.get("disks", []):
+        if d.get("rootfs") or "zpool" not in d:
+            continue
+        pools[d.get("zpool")].append(d)
+
+    if not pools:
+        print("[INFO] No secondary pools to configure.")
+        return
+
+    key_dir = Path("/etc/cryptsetup-keys.d")
+    #key_dir = Path("/mnt/gentoo/etc/cryptsetup-keys.d")
+    key_file = key_dir / "secondary_pools.key"
+
+    print(f"\n[INFO] Creating key file dir {key_file}...")
+    key_dir.mkdir(parents=True, exist_ok=True)
+
+    if not key_file.exists():
+        print("  [+] Generating keyfile...")
+        with open(key_file, "wb") as f:
+            f.write(os.urandom(64))
+        
+        key_file.chmod(0o400)
+
+    host_key_path = str(key_file)
+
+    for pool_name, disks in pools.items():
+        print(f"\n[INFO] Configuring secondary pool: {pool_name}")
+        lvm_lv_paths = []
+
+        for index, d in enumerate(disks):
+            dev_id = d.get("id")
+            phys_dev = f"/dev/disk/by-id/{dev_id}"
+            
+            luks_name = f"luks_{pool_name}_{index}"
+            vg_name = f"vg_{pool_name}_{index}"
+            level_name = f"lv_{pool_name}_{index}"
+            
+            mapper_luks = f"/dev/mapper/{luks_name}"
+            mapper_lv = f"/dev/mapper/{vg_name}-{level_name}"
+
+            if d.get("encrypt"):
+                print(f"  [+] Formating with LUKS {phys_dev} (using keyfile)...")
+                subprocess.run([
+                    "cryptsetup", "luksFormat", 
+                    "--key-file", host_key_path, 
+                    phys_dev
+                ], check=True)
+
+                print(f"  [+] Opening LUKS as {luks_name}...")
+                subprocess.run([
+                    "cryptsetup", "open", 
+                    "--key-file", host_key_path, 
+                    phys_dev, luks_name
+                ], check=True)
+                target_dev = mapper_luks
+            else:
+                target_dev = phys_dev
+
+            print(f"  [+] Creating VG {vg_name} and LV {level_name}...")
+            subprocess.run(["vgcreate", vg_name, target_dev], check=True)
+            subprocess.run(["lvcreate", "-l", "100%FREE", "-n", level_name, vg_name], check=True)
+            
+            lvm_lv_paths.append(mapper_lv)
+
+        target_mountpoint = f"/srv/storage/{pool_name}"
+
+        print(f"[RUN] Creating zpool '{pool_name}' RAID0 with the disks: {lvm_lv_paths}")
+        
+        is_ssd_pool = (pool_name == "ssd")
+        trim_flag = ["-o", "autotrim=on"] if is_ssd_pool else []
+
+        subprocess.run([
+            "zpool", "create", "-f",
+            "-o", "ashift=12",
+            *trim_flag,
+            "-R", "/mnt/gentoo",
+            "-m", target_mountpoint,
+            "-O", "acltype=posixacl",
+            "-O", "xattr=sa",
+            "-O", "relatime=on",
+            "-O", "compression=lz4",
+            pool_name
+        ] + lvm_lv_paths, check=True)
+
+    print("\n[INFO] Secondary pools created with success!")
+
+    dmcrypt_config_path = Path("/mnt/gentoo/etc/conf.d/dmcrypt")
+    
+    print("[INFO] Creating dmcrypt...")
+    
+    dmcrypt_content = "# /etc/conf.d/dmcrypt \n\n"
+    
+    for pool_name, disks in pools.items():
+        dmcrypt_content += f"# Pool ZFS: {pool_name}\n"
+        for index, d in enumerate(disks):
+            dev_id = d.get("id")
+            dmcrypt_content += f"target=luks_{pool_name}_{index}\n"
+            dmcrypt_content += f"source='/dev/disk/by-id/{dev_id}'\n"
+            dmcrypt_content += f"key='/etc/cryptsetup-keys.d/secondary_pools.key'\n\n"
+            
+    # Salva o arquivo no chroot
+    dmcrypt_config_path.write_text(dmcrypt_content)
+    print("  [+] /etc/conf.d/dmcrypt generated!")
+
 def main():
   cfg = Config()
 
-  if cfg.get("sanitize_disks"):
-    print("[INFO] Disk sanitization enabled, triggering SECURE ERASE commands")
-    general_sanitizer(cfg)
-  setup_storage(cfg)
-  stage3_local = next(glob.iglob("stage3-*.tar.xz"), None)
-  if not stage3_local:
-    stage3_download(cfg)
-  else:
-    print(f"[INFO] Found local stage3 ({stage3_local}), copying to /mnt/gentoo...")
-    shutil.copy(stage3_local, f"/mnt/gentoo/{stage3_local}")
-  stage3_prepare(cfg)
+  setup_secondary_pools(cfg)
+
+  # if cfg.get("sanitize_disks"):
+  #   print("[INFO] Disk sanitization enabled, triggering SECURE ERASE commands")
+  #   general_sanitizer(cfg)
+  # setup_storage(cfg)
+  # stage3_local = next(glob.iglob("stage3-*.tar.xz"), None)
+  # if not stage3_local:
+  #   stage3_download(cfg)
+  # else:
+  #   print(f"[INFO] Found local stage3 ({stage3_local}), copying to /mnt/gentoo...")
+  #   shutil.copy(stage3_local, f"/mnt/gentoo/{stage3_local}")
+  # stage3_prepare(cfg)
 
 if __name__ == "__main__":
   elevate_privileges()
