@@ -282,7 +282,7 @@
 
     - name: Create the 60-performance udev rule
       ansible.builtin.copy:
-        dest: /etc/udev/rules.d/60-performance
+        dest: /etc/udev/rules.d/60-performance.rules
         content: |
           ACTION=="add", SUBSYSTEM=="cpu", ATTR{cpufreq/scaling_governor}="performance"
           ACTION=="add", SUBSYSTEM=="scsi_host", KERNEL=="host*", ATTR{link_power_management_policy}="max_performance"
