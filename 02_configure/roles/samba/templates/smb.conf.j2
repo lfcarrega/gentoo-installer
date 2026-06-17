@@ -1,0 +1,20 @@
+[global]
+   workgroup = WORKGROUP
+   server string = Samba Server
+   security = user
+   map to guest = Bad User
+   log file = /var/log/samba/log.%m
+   max log size = 50
+   dns proxy = no
+
+{% for share in samba_shares %}
+[{{ share.name }}]
+   comment = {{ share.comment }}
+   path = {{ share.path }}
+   valid users = {{ share.valid_users }}
+   read only = {{ 'yes' if share.read_only else 'no' }}
+   browseable = {{ 'yes' if share.browseable else 'no' }}
+   create mask = 0664
+   directory mask = 0775
+
+{% endfor %}

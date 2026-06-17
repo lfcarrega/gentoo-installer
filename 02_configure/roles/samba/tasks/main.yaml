@@ -1,0 +1,49 @@
+- name: Install needed packages
+  ansible.builtin.apt:
+    pkg:
+      - samba
+      - samba-common-bin
+    update_cache: yes
+
+- name: Deploy smb.conf
+  ansible.builtin.template:
+    src: smb.conf.j2
+    dest: /etc/samba/smb.conf
+    owner: root
+    group: root
+    mode: "0644"
+    validate: "testparm -s %s"
+  notify: restart samba
+  tags: samba
+
+- name: Ensure Samba users exist as system users
+  ansible.builtin.user:
+    name: "{{ item.name }}"
+    shell: /sbin/nologin
+    create_home: no
+    state: present
+  loop: "{{ samba_users }}"
+  tags: samba
+  no_log: true
+ 
+- name: Set Samba passwords for smbuser
+  command:
+    cmd: /usr/bin/smbpasswd -s -a {{ item.name }}
+    stdin: |
+      {{ item.password }}
+      {{ item.password }}
+  register: smbpasswd_command
+  loop: "{{ samba_users }}"
+  failed_when:
+    - smbpasswd_command.rc != 0
+    - "'Mismatch - password unchanged.' not in smbpasswd_command.stderr"
+  changed_when: smbpasswd_command.rc == 0
+  no_log: true
+  tags: samba
+
+- name: Enable Samba service
+  ansible.builtin.service:
+    name: smbd
+    enabled: yes
+    state: started
+  tags: samba

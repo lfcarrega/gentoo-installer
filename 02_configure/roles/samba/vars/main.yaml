@@ -1,0 +1,19 @@
+samba_users:
+  - name: lfcarrega
+    password: "{{ lfcarrega_smb_password }}"
+  - name: brcarrega
+    password: "{{ brcarrega_smb_password }}"
+
+samba_shares:
+  - name: hdd
+    path: /srv/storage/hdd
+    comment: "HDD storage"
+    valid_users: brcarrega lfcarrega
+    read_only: no
+    browseable: yes
+  - name: ssd
+    path: /srv/storage/ssd
+    comment: "SSD storage"
+    valid_users: brcarrega lfcarrega
+    read_only: no
+    browseable: yes

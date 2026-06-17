@@ -541,7 +541,18 @@
       failed_when: 
         - incus_profile_atlas.rc != 0
         - "'already exists' not in incus_profile_atlas.stderr and 'already exists' not in incus_profile_atlas.stdout"
-      changed_when: incus_profile_pihole.rc == 0
+      changed_when: incus_profile_atlas.rc == 0
+      tags: incus
+
+    - name: Set the amigo incus profile
+      ansible.builtin.command:
+        cmd: incus profile create amigo
+        stdin: "{{ lookup('ansible.builtin.file', 'files/incus/profiles/amigo.yaml') }}"
+      register: incus_profile_amigo
+      failed_when: 
+        - incus_profile_amigo.rc != 0
+        - "'already exists' not in incus_profile_amigo.stderr and 'already exists' not in incus_profile_amigo.stdout"
+      changed_when: incus_profile_amigo.rc == 0
       tags: incus
 
     - name: Create pi-hole container
@@ -563,7 +574,62 @@
       failed_when: 
         - incus_profile_atlas.rc != 0
         - "'already exists' not in incus_profile_atlas.stderr and 'already exists' not in incus_profile_atlas.stdout"
-      changed_when: incus_profile_pihole.rc == 0
+      changed_when: incus_launch_atlas.rc == 0
+      tags: incus
+
+    - name: Create amigo container
+      ansible.builtin.command:
+        cmd: >
+          incus launch images:debian/13/cloud amigo --profile default --profile amigo
+      register: incus_launch_amigo
+      failed_when: 
+        - incus_launch_amigo.rc != 0
+        - "'already exists' not in incus_launch_amigo.stderr and 'already exists' not in incus_launch_amigo.stdout"
+      changed_when: incus_launch_amigo.rc == 0
+      tags: incus
+
+    - name: Add ssd-pool to atlas
+      ansible.builtin.command:
+        cmd: >
+          incus config device add atlas ssd-pool disk source=/srv/storage/ssd path=/srv/storage/ssd
+      register: incus_atlas_ssd_add
+      failed_when:
+        - incus_atlas_ssd_add.rc != 0
+        - "'already exists' not in incus_atlas_ssd_add.stderr and 'already exists' not in incus_atlas_ssd_add.stdout"
+      changed_when: incus_atlas_ssd_add.rc == 0
+      tags: incus
+
+    - name: Add hdd-pool to atlas
+      ansible.builtin.command:
+        cmd: >
+          incus config device add atlas hdd-pool disk source=/srv/storage/hdd path=/srv/storage/hdd
+      register: incus_atlas_hdd_add
+      failed_when:
+        - incus_atlas_hdd_add.rc != 0
+        - "'already exists' not in incus_atlas_hdd_add.stderr and 'already exists' not in incus_atlas_hdd_add.stdout"
+      changed_when: incus_atlas_hdd_add.rc == 0
+      tags: incus
+
+    - name: Add ssd-pool to amigo
+      ansible.builtin.command:
+        cmd: >
+          incus config device add amigo ssd-pool disk source=/srv/storage/ssd path=/srv/storage/ssd
+      register: incus_amigo_ssd_add
+      failed_when:
+        - incus_amigo_ssd_add.rc != 0
+        - "'already exists' not in incus_amigo_ssd_add.stderr and 'already exists' not in incus_amigo_ssd_add.stdout"
+      changed_when: incus_amigo_ssd_add.rc == 0
+      tags: incus
+
+    - name: Add hdd-pool to amigo
+      ansible.builtin.command:
+        cmd: >
+          incus config device add amigo hdd-pool disk source=/srv/storage/hdd path=/srv/storage/hdd
+      register: incus_amigo_hdd_add
+      failed_when:
+        - incus_amigo_hdd_add.rc != 0
+        - "'already exists' not in incus_amigo_hdd_add.stderr and 'already exists' not in incus_amigo_hdd_add.stdout"
+      changed_when: incus_amigo_hdd_add.rc == 0
       tags: incus
 
     - name: Create the /var/lib/libvirt/images directory
@@ -870,7 +936,7 @@
       changed_when: false
       failed_when: false
 
-    - name: Clevis setup
+    - name: Manual Pi-hole setup
       ansible.builtin.pause:
         prompt: |
           SSH into your your Pi-hole instance and proceed with the installation using this command:
@@ -923,3 +989,16 @@
       ansible.builtin.systemd_service:
         name: dnscrypt-proxy.socket
         state: reloaded
+
+- name: Configure Amigo Samba role
+  hosts: amigo
+  gather_facts: yes
+
+  vars:
+    ansible_python_interpreter: /usr/bin/python3
+
+  vars_files:
+    - env.yaml
+
+  roles:
+    - samba
