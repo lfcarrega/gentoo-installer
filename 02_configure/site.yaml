@@ -800,7 +800,7 @@
 
     - name: Show slot number
       ansible.builtin.debug:
-        msg: "O número do slot do Clevis é: {{ clevis_slot }}"
+        msg: "Clevis slot is: {{ clevis_slot }}"
       tags: clevis
 
     - name: Clevis automatic unbind
