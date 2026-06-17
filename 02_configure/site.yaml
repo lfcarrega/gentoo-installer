@@ -776,10 +776,40 @@
       failed_when: false
       tags: clevis
 
+    - name: List Clevis binds
+      ansible.builtin.command: clevis luks list -d {{ luks_dev }}
+      register: clevis_result
+      changed_when: false
+      tags: clevis
+
+    - name: Define clevis_lines
+      ansible.builtin.set_fact:
+        clevis_lines: "{{ clevis_result.stdout_lines }}"
+      tags: clevis
+
+    - name: Validate binds list
+      ansible.builtin.fail:
+        msg: "Error: Device has {{ clevis_lines | length }} registered bind. Expected: 1."
+      when: clevis_lines | length != 1
+      tags: clevis
+
+    - name: Extract slot number
+      ansible.builtin.set_fact:
+        clevis_slot: "{{ clevis_lines[0].split(':')[0] | trim }}"
+      tags: clevis
+
+    - name: Show slot number
+      ansible.builtin.debug:
+        msg: "O número do slot do Clevis é: {{ clevis_slot }}"
+      tags: clevis
+
     - name: Clevis automatic unbind
       command:
-        cmd: clevis luks unbind -d {{ luks_dev }} -s 1 -f
-      failed_when: false
+        cmd: clevis luks unbind -d {{ luks_dev }} -s {{ clevis_slot }} -f
+      register: clevis_unbind
+      failed_when:
+        - clevis_unbind.rc != 0
+        - "'No clevis slot detected on device' not in clevis_unbind.stderr"
       tags: clevis
 
     - name: Clevis automatic bind
