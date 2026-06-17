@@ -14,6 +14,7 @@ This is mostly a *PERSONAL* project to learn more about Ansible and Linux stuff.
 - Gentoo 'gentoo-pve' as the KVM and LXC host
 - A Debian LXC container named 'atlas', which holds the Docker services I'm using
 - Another Debian LXC container named 'pihole' responsible for DNS stuff
+- A third Debian container just for the "Samba" services
 - A couple of VMs with GPU passthru
 
 ## Repo

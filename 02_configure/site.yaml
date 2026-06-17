@@ -610,6 +610,52 @@
       changed_when: incus_atlas_hdd_add.rc == 0
       tags: incus
 
+    - name: Enable shift in the hdd-pool (atlas)
+      ansible.builtin.command:
+        cmd: >
+          incus config device set atlas hdd-pool shift=true
+      tags: incus
+      
+    - name: Enable shift in the ssd-pool (atlas)
+      ansible.builtin.command:
+        cmd: >
+          incus config device set atlas ssd-pool shift=true
+      tags: incus
+
+    - name: Add ssd-pool to pihole
+      ansible.builtin.command:
+        cmd: >
+          incus config device add pihole ssd-pool disk source=/srv/storage/ssd path=/srv/storage/ssd
+      register: incus_pihole_ssd_add
+      failed_when:
+        - incus_pihole_ssd_add.rc != 0
+        - "'already exists' not in incus_pihole_ssd_add.stderr and 'already exists' not in incus_pihole_ssd_add.stdout"
+      changed_when: incus_pihole_ssd_add.rc == 0
+      tags: incus
+
+    - name: Add hdd-pool to pihole
+      ansible.builtin.command:
+        cmd: >
+          incus config device add pihole hdd-pool disk source=/srv/storage/hdd path=/srv/storage/hdd
+      register: incus_pihole_hdd_add
+      failed_when:
+        - incus_pihole_hdd_add.rc != 0
+        - "'already exists' not in incus_pihole_hdd_add.stderr and 'already exists' not in incus_pihole_hdd_add.stdout"
+      changed_when: incus_pihole_hdd_add.rc == 0
+      tags: incus
+
+    - name: Enable shift in the hdd-pool (pihole)
+      ansible.builtin.command:
+        cmd: >
+          incus config device set pihole hdd-pool shift=true
+      tags: incus
+      
+    - name: Enable shift in the ssd-pool (pihole)
+      ansible.builtin.command:
+        cmd: >
+          incus config device set pihole ssd-pool shift=true
+      tags: incus
+    
     - name: Add ssd-pool to amigo
       ansible.builtin.command:
         cmd: >
@@ -636,11 +682,13 @@
       ansible.builtin.command:
         cmd: >
           incus config device set amigo hdd-pool shift=true
+      tags: incus
       
     - name: Enable shift in the ssd-pool (amigo)
       ansible.builtin.command:
         cmd: >
           incus config device set amigo ssd-pool shift=true
+      tags: incus
 
     - name: Create the /var/lib/libvirt/images directory
       ansible.builtin.file:
