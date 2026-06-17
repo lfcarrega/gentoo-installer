@@ -292,10 +292,12 @@
     - name: Call udevadm to reload the rules
       ansible.builtin.command: >
         udevadm control --reload-rules
+      tags: udev
 
     - name: Call udevadm trigger
       ansible.builtin.command: >
         udevadm trigger
+      tags: udev
 
     - name: Add /etc/dracut.conf.d/00-installkernel.conf
       ansible.builtin.copy:
@@ -356,6 +358,7 @@
           - sys-boot/shim
           - sys-boot/mokutil
           - dev-libs/libisoburn
+          - sys-apps/hdparm
         state: present
 
     - name: Add net.br0 configuration
