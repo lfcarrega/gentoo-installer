@@ -271,6 +271,32 @@
         group: root
         mode: '0755'
 
+    - name: Create the /etc/udev/rules.d directory
+      ansible.builtin.file:
+        path: /etc/udev/rules.d
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+      tags: udev
+
+    - name: Create the 60-performance udev rule
+      ansible.builtin.copy:
+        dest: /etc/udev/rules.d/60-performance
+        content: |
+          ACTION=="add", SUBSYSTEM=="cpu", ATTR{cpufreq/scaling_governor}="performance"
+          ACTION=="add", SUBSYSTEM=="scsi_host", KERNEL=="host*", ATTR{link_power_management_policy}="max_performance"
+          ACTION=="add|change", SUBSYSTEM=="block", KERNEL=="sd*", RUN+="/usr/bin/hdparm -B 255 -S 0 -W 1 $env{DEVNAME}"
+      tags: udev
+
+    - name: Call udevadm to reload the rules
+      ansible.builtin.command: >
+        udevadm control --reload-rules
+
+    - name: Call udevadm trigger
+      ansible.builtin.command: >
+        udevadm trigger
+
     - name: Add /etc/dracut.conf.d/00-installkernel.conf
       ansible.builtin.copy:
         dest: /etc/dracut.conf.d/00-installkernel.conf
