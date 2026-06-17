@@ -16,6 +16,10 @@
     timezone: "Etc/UTC"
     mirror_country: "Brazil"
 
+  vars_files:
+      - env.yaml
+      - secrets.yaml
+
   tasks:
     - name: Remove the original make.conf file
       ansible.builtin.file:
@@ -772,16 +776,17 @@
       failed_when: false
       tags: clevis
 
-    - name: Clevis setup
-      ansible.builtin.pause:
-        prompt: |
-          SSH into your machine and issue this command:
-          "clevis luks bind -d {{ luks_dev }} tpm2 '{"pcr_bank":"sha256","pcr_ids":"0,2,3,5,6,7"}'"
-          Type your LUKS password when asked, come back here and press ENTER to continue.
-          If you get an error about SHA256, try changing to sha1 above.
-          If you are rebinding issue this first:
-          "clevis luks unbind -d {{ luks_dev }} -s 1"
-      when: sbctl_status_secureboot.rc == 0
+    - name: Clevis automatic unbind
+      command:
+        cmd: clevis luks unbind -d {{ luks_dev }} -s 1 -f
+      failed_when: false
+      tags: clevis
+
+    - name: Clevis automatic bind
+      command:
+        cmd: clevis luks bind -d {{ luks_dev }} tpm2 '{"pcr_bank":"sha1","pcr_ids":"0,2,3,5,6,7"}'
+        stdin: |
+          {{ luks_password }}
       tags: clevis
 
   handlers:
