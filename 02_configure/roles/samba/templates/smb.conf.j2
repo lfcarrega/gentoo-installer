@@ -11,7 +11,8 @@
 [{{ share.name }}]
    comment = {{ share.comment }}
    path = {{ share.path }}
-   valid users = {{ share.valid_users }}
+   valid users = {% for user in samba_users %}{{ user.name }}{% if not loop.last %} {% endif %}{% endfor %}
+
    read only = {{ 'yes' if share.read_only else 'no' }}
    browseable = {{ 'yes' if share.browseable else 'no' }}
    create mask = 0664

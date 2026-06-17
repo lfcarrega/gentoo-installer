@@ -1,9 +1,51 @@
 - name: Install needed packages
   ansible.builtin.apt:
     pkg:
+      - acl
       - samba
       - samba-common-bin
     update_cache: yes
+
+- name: Ensure personal storage directories exist
+  ansible.builtin.file:
+    path: "{{ item.1 }}"
+    state: directory
+    owner: "{{ item.0.user }}"
+    group: "{{ item.0.user }}"
+    mode: "0750"
+  loop: "{{ storage_personal_dirs | subelements('paths') }}"
+
+- name: Ensure shared storage directories exist
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "1777"
+  loop: "{{ storage_shared_dirs }}"
+
+- name: Set default ACLs on personal directories (owner full access)
+  ansible.posix.acl:
+    path: "{{ item.1 }}"
+    entity: "{{ item.0.user }}"
+    etype: user
+    permissions: rwx
+    default: yes
+    recursive: yes
+    state: present
+  loop: "{{ storage_personal_dirs | subelements('paths') }}"
+
+- name: Set read-only default ACLs on personal directories (other user)
+  ansible.posix.acl:
+    path: "{{ item.0.1 }}"
+    entity: "{{ item.1.name }}"
+    etype: user
+    permissions: rx
+    default: yes
+    recursive: yes
+    state: present
+  loop: "{{ storage_personal_dirs | subelements('paths') | product(samba_users) | list }}"
+  when: item.1.name != item.0.0.user
 
 - name: Deploy smb.conf
   ansible.builtin.template:

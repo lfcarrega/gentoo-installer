@@ -5,15 +5,26 @@ samba_users:
     password: "{{ brcarrega_smb_password }}"
 
 samba_shares:
-  - name: hdd
-    path: /srv/storage/hdd
-    comment: "HDD storage"
-    valid_users: brcarrega lfcarrega
-    read_only: no
+  - name: storage
+    path: /srv/storage
+    comment: "Storage"
     browseable: yes
-  - name: ssd
-    path: /srv/storage/ssd
-    comment: "SSD storage"
-    valid_users: brcarrega lfcarrega
     read_only: no
-    browseable: yes
+
+storage_acl_bases:
+  - /srv/storage/hdd
+  - /srv/storage/ssd
+
+storage_personal_dirs:
+  - user: lfcarrega
+    paths:
+      - /srv/storage/hdd/lfcarrega
+      - /srv/storage/ssd/lfcarrega
+  - user: brcarrega
+    paths:
+      - /srv/storage/hdd/brcarrega
+      - /srv/storage/ssd/brcarrega
+
+storage_shared_dirs:
+  - /srv/storage/hdd/shared
+  - /srv/storage/ssd/shared
