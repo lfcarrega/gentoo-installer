@@ -1024,7 +1024,7 @@
             reverse_proxy nextcloud:11000
           }
           silverbullet.furtadocarrega.duckdns.org {
-            reverse_proxy linkding:3000
+            reverse_proxy silverbullet:3000
           }
           vaultwarden.furtadocarrega.duckdns.org {
             reverse_proxy vaultwarden:80
@@ -1043,6 +1043,9 @@
         - jellyfin
         - vaultwarden
         - wg-easy
+        - linkding
+        - navidrome
+        - silverbullet
 
   handlers:
     - name: Restart systemd-resolved
