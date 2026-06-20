@@ -1,0 +1,64 @@
+- name: "Create /usr/local/src/custom-initramfs directory"
+  ansible.builtin.file:
+    path: /usr/local/src/custom-initramfs
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Copy builder
+  ansible.builtin.copy:
+    src: files/custom-initramfs/build_all.sh
+    dest: /usr/local/src/custom-initramfs/build_all.sh
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Copy init script
+  ansible.builtin.copy:
+    src: files/custom-initramfs/init.sh
+    dest: /usr/local/src/custom-initramfs/init.sh
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Copy lvm.conf
+  ansible.builtin.copy:
+    src: files/custom-initramfs/lvm.conf
+    dest: /usr/local/src/custom-initramfs/lvm.conf
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Create post_init.sh
+  ansible.builtin.template:
+    src: files/custom-initramfs/post_init.sh.j2
+    dest: "/usr/local/src/custom-initramfs/post_init.sh"
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Create wg0.conf
+  ansible.builtin.template:
+    src: files/custom-initramfs/wg0.conf.j2
+    dest: "/usr/local/src/custom-initramfs/wg0.conf"
+    owner: root
+    group: root
+    mode: '0600'
+
+- name: Create Dropbear initramfs host key
+  ansible.builtin.command: >
+    dropbearkey -t ed25519 -f /usr/local/src/custom-initramfs/dropbear_ed25519_host_key
+  args:
+      creates: /usr/local/src/custom-initramfs/dropbear_ed25519_host_key
+
+- name: Create Dropbear initramfs authorized_keys
+  ansible.builtin.copy:
+    dest: /usr/local/src/custom-initramfs/dropbear_authorized_keys
+    content: "{{ dropbear_authorized_keys }}"
+
+- name: Generate custom-initramfs
+  ansible.builtin.shell: |
+    set -e
+    cd /usr/local/src/custom-initramfs
+    ./build_all.sh

@@ -267,6 +267,10 @@
           sys-fs/squashfs-tools lzma
           sys-libs/libcap static-libs
 
+          app-misc/pax-utils python
+
+          sys-apps/busybox mdev
+
     - name: Create the /etc/dracut.conf.d directory
       ansible.builtin.file:
         path: /etc/dracut.conf.d
@@ -363,6 +367,12 @@
           - sys-boot/mokutil
           - dev-libs/libisoburn
           - sys-apps/hdparm
+          - dev-libs/libfido2
+          - media-fonts/terminus-font
+          - net-vpn/wireguard-tools
+          - sys-apps/busybox
+          - net-misc/dropbear
+          - net-vpn/wireguard-tools
         state: present
 
     - name: Add net.br0 configuration
@@ -375,7 +385,7 @@
           config_br0="192.168.15.2/24 fd5d:d97c:25d5:1::2/64"
           routes_br0="default via 192.168.15.1
           default via fe80::920a:62ff:fe4f:28d0"
-          dns_servers_br0="127.0.0.1 ::1"
+          dns_servers_br0="192.168.15.4 fd5d:d97c:25d5:1::4"
 
           bridge_forward_delay_br0=0
           bridge_hello_time_br0=1000
@@ -449,6 +459,10 @@
         group: root
         mode: '0755'
         force: no
+    
+    - name: Custom initramfs
+      ansible.builtin.include_tasks: custom-initramfs.yaml
+      tags: custom-initramfs
 
     - name: Add grub_gpg
       ansible.builtin.copy:
@@ -472,6 +486,7 @@
           Expire-Date: 0
 
           %commit
+      tags: grub_gpg
 
     - name: Sign with GRUB GPG
       ansible.builtin.shell: |
@@ -495,6 +510,7 @@
         grub-install --removable --disable-shim-lock --pubkey=/tmp/grub_gpg.pub --modules="pgp gcry_sha512 gcry_rsa" --efi-directory=/efi
         sbctl sign -s /efi/EFI/BOOT/BOOTX64.EFI
         grub_sign
+      tags: grub_gpg
 
     - name: GRUB mkconfig
       ansible.builtin.shell: |

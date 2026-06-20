@@ -1,0 +1,19 @@
+gentoo: # 192.168.15.2 fd5d:d97c:25d5:1::2
+  incus_containers:
+    atlas: # 192.168.15.3 fd5d:d97c:25d5:1::3
+      docker:
+        - caddy
+        - wg-easy
+    pihole: # 192.168.15.4 fd5d:d97c:25d5:1::4
+      - pihole
+      - dnscrypt-proxy # como upstream do pihole
+    amigo: # 192.168.15.5 fd5d:d97c:25d5:1::5
+      - samba
+  libvirt:
+    - arch # workstation pessoal
+    - windows # windows para testes
+
+dnscrypt-proxy:
+  cloaking-rules: |
+    *.furtadocarrega.duckdns.org 192.168.15.3
+    *.furtadocarrega.duckdns.org fd5d:d97c:25d5:1::3

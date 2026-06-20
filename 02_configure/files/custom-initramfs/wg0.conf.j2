@@ -1,0 +1,8 @@
+[Interface]
+ListenPort = {{ wg_ifport }}
+PrivateKey = {{ wg_ifpk }}
+
+[Peer]
+PublicKey = {{ wg_peerpubkey }}
+PresharedKey = {{ wg_peerpresharedkey }}
+AllowedIPs = {{ wg_peerallowedips }}

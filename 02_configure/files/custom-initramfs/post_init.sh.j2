@@ -1,0 +1,20 @@
+#!/usr/bin/busybox sh
+
+# please improve this
+
+cryptsetup open $(findfs UUID={{ luks_uuid }}) luks-{{ luks_uuid }}
+
+lvm vgscan --mknodes 2>/dev/null
+lvm lvchange -a y {{ vg_name }}/lv_thin0 2>/dev/null
+lvm lvchange -a y {{ vg_name }}/gentoo 2>/dev/null
+lvm lvchange -a y {{ vg_name }}/arch 2>/dev/null
+lvm vgscan --mknodes 2>/dev/null
+
+zpool import -N -R /mnt/root rpool
+
+zfs mount rpool/ROOT/gentoo
+zfs mount rpool/data/distfiles
+zfs mount rpool/data/home
+zfs mount rpool/data/repos
+zfs mount rpool/data/repos/gentoo-cache
+zfs mount rpool/data/root
