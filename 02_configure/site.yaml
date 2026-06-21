@@ -271,6 +271,8 @@
 
           sys-apps/busybox mdev
 
+          net-fs/nfs-utils -nfsv3
+
     - name: Create the /etc/dracut.conf.d directory
       ansible.builtin.file:
         path: /etc/dracut.conf.d
@@ -373,6 +375,10 @@
           - sys-apps/busybox
           - net-misc/dropbear
           - net-vpn/wireguard-tools
+          - app-misc/jq
+          - net-misc/openssh
+          - app-portage/gentoolkit
+          - dev-python/psutil
         state: present
 
     - name: Add net.br0 configuration
@@ -424,28 +430,6 @@
         zgenhostid
       args:
         creates: /etc/hostid
-
-    - name: Enable the GURU repo
-      ansible.builtin.command: >
-        eselect repository enable guru
-
-    - name: Sync after enabling the GURU repo
-      community.general.portage:
-        sync: true
-      tags: sync
-
-    - name: Unmask clevis by accepting it's ~amd64 keyword
-      ansible.builtin.copy:
-        dest: /etc/portage/package.accept_keywords/10clevis
-        content: |
-          app-crypt/clevis::guru ~amd64
-          dev-libs/luksmeta::guru ~amd64
-
-    - name: Emerge clevis
-      community.general.portage:
-        package:
-          - app-crypt/clevis
-        state: present
 
     - name: Emerge config gentoo-kernel
       ansible.builtin.shell: >
@@ -785,56 +769,6 @@
         state: running
       tags: arch_vm
 
-    - name: Check sbctl to see if secureboot is enabled
-      ansible.builtin.shell: sbctl status | grep -q "Secure Boot:[[:space:]]✓ Enabled"
-      register: sbctl_status_secureboot
-      changed_when: false
-      failed_when: false
-      tags: clevis
-
-    - name: List Clevis binds
-      ansible.builtin.command: clevis luks list -d {{ luks_dev }}
-      register: clevis_result
-      changed_when: false
-      tags: clevis
-
-    - name: Define clevis_lines
-      ansible.builtin.set_fact:
-        clevis_lines: "{{ clevis_result.stdout_lines }}"
-      tags: clevis
-
-    - name: Validate binds list
-      ansible.builtin.fail:
-        msg: "Error: Device has {{ clevis_lines | length }} registered bind. Expected: 1."
-      when: clevis_lines | length != 1
-      tags: clevis
-
-    - name: Extract slot number
-      ansible.builtin.set_fact:
-        clevis_slot: "{{ clevis_lines[0].split(':')[0] | trim }}"
-      tags: clevis
-
-    - name: Show slot number
-      ansible.builtin.debug:
-        msg: "Clevis slot is: {{ clevis_slot }}"
-      tags: clevis
-
-    - name: Clevis automatic unbind
-      command:
-        cmd: clevis luks unbind -d {{ luks_dev }} -s {{ clevis_slot }} -f
-      register: clevis_unbind
-      failed_when:
-        - clevis_unbind.rc != 0
-        - "'No clevis slot detected on device' not in clevis_unbind.stderr"
-      tags: clevis
-
-    - name: Clevis automatic bind
-      command:
-        cmd: clevis luks bind -d {{ luks_dev }} tpm2 '{"pcr_bank":"sha1","pcr_ids":"0,2,3,5,6,7"}'
-        stdin: |
-          {{ luks_password }}
-      tags: clevis
-
   handlers:
     - name: Run locale-gen
       ansible.builtin.command: >
@@ -1011,6 +945,9 @@
               file_server
             }
           }
+          gamevault.furtadocarrega.duckdns.org {
+            reverse_proxy gamevault:8080
+          }
           jellyfin.furtadocarrega.duckdns.org {
             reverse_proxy jellyfin:8096
           }
@@ -1046,6 +983,7 @@
         - linkding
         - navidrome
         - silverbullet
+        - gamevault
 
   handlers:
     - name: Restart systemd-resolved
