@@ -769,6 +769,33 @@
         state: running
       tags: arch_vm
 
+    - name: Create win2k25 VM LV
+      community.general.lvol:
+        vg: "{{ vg_name }}"
+        thinpool: "{{ lv_name }}"
+        lv: win2k25
+        size: 400g
+        state: present
+      tags: win2k25_vm
+
+    - name: Define win2k25 VM
+      community.libvirt.virt:
+        command: define
+        xml: "{{ lookup('template', 'files/templates/libvirt/vm_win2k25.xml.j2') }}"
+      vars:
+        vm_name: "win2k25"
+        vm_memory: "16777216"
+        vm_vcpus: "4"
+        vm_iso: "winpe.iso"
+        vm_storage: "/dev/{{ vg_name }}/win2k25"
+      tags: win2k25_vm
+
+    - name: Ensure the win2k25 VM is running
+      community.libvirt.virt:
+        name: "win2k25"
+        state: running
+      tags: win2k25_vm
+
   handlers:
     - name: Run locale-gen
       ansible.builtin.command: >
