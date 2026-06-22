@@ -987,6 +987,13 @@
           nextcloud.furtadocarrega.duckdns.org {
             reverse_proxy nextcloud:11000
           }
+          pihole.furtadocarrega.duckdns.org {
+            reverse_proxy https://192.168.15.4 {
+              transport http {
+                tls_insecure_skip_verify
+              }
+            }
+          }
           silverbullet.furtadocarrega.duckdns.org {
             reverse_proxy silverbullet:3000
           }
