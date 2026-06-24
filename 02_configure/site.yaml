@@ -273,6 +273,10 @@
 
           net-fs/nfs-utils -nfsv3
 
+          sys-firmware/intel-microcode hostonly
+
+          app-admin/eclean-kernel zstd
+
     - name: Create the /etc/dracut.conf.d directory
       ansible.builtin.file:
         path: /etc/dracut.conf.d
@@ -378,7 +382,9 @@
           - app-misc/jq
           - net-misc/openssh
           - app-portage/gentoolkit
+          - app-admin/eclean-kernel
           - dev-python/psutil
+          - sys-apps/lm-sensors
         state: present
 
     - name: Add net.br0 configuration
@@ -477,7 +483,7 @@
         set -e
         grub_sign() {
           local -a files=()
-          files=($(find /boot -regextype posix-extended -regex '.*(\.cfg|\.lst|\.mod|vmlinuz.*|init.*|grubenv|-uc\.img|\.efi)$' | sed -En '/\.sig$/! p'))
+          files=($(find /boot -regextype posix-extended -regex '.*(\.cfg|\.lst|\.mod|vmlinuz.*|init.*|grubenv|-uc\.img|\.efi|\.cpio)$' | sed -En '/\.sig$/! p'))
 
           #echo "Signing all files required for boot with the GRUB GPG key..."
 
@@ -599,6 +605,19 @@
       changed_when: incus_profile_pihole.rc == 0
       tags: incus
 
+    - name: Set the phantom incus profile
+      ansible.builtin.command:
+        cmd: incus profile create phantom
+        stdin: "{{ lookup('ansible.builtin.file', 'files/incus/profiles/phantom.yaml') }}"
+      register: incus_profile_phantom
+      failed_when: 
+        - incus_profile_phantom.rc != 0
+        - "'already exists' not in incus_profile_phantom.stderr and 'already exists' not in incus_profile_phantom.stdout"
+      changed_when: incus_profile_phantom.rc == 0
+      tags: 
+        - incus
+        - phantom
+
     - name: Create atlas container
       ansible.builtin.command:
         cmd: >
@@ -620,6 +639,19 @@
         - "'already exists' not in incus_launch_amigo.stderr and 'already exists' not in incus_launch_amigo.stdout"
       changed_when: incus_launch_amigo.rc == 0
       tags: incus
+
+    - name: Create phantom container
+      ansible.builtin.command:
+        cmd: >
+          incus launch images:debian/13/cloud phantom --profile default --profile phantom
+      register: incus_launch_phantom
+      failed_when: 
+        - incus_launch_phantom.rc != 0
+        - "'already exists' not in incus_launch_phantom.stderr and 'already exists' not in incus_launch_phantom.stdout"
+      changed_when: incus_launch_phantom.rc == 0
+      tags: 
+        - incus
+        - phantom
 
     - name: Add ssd-pool to atlas
       ansible.builtin.command:
@@ -736,6 +768,7 @@
         url: https://cdn77.cachyos.org/ISO/desktop/260426/cachyos-desktop-linux-260426.iso
         dest: /var/lib/libvirt/images/cachyos-desktop-linux-260426.iso
         mode: '0644'
+      tags: never
 
     - name: Download Arch
       ansible.builtin.get_url:
@@ -909,7 +942,7 @@
         dest: /opt/duckdns/update.sh
         mode: '0755'
         content: |
-          #!/usr/bin/env/bash
+          #!/usr/bin/env bash
           # Managed by Ansible
           echo url="https://www.duckdns.org/update?domains=furtadocarrega&token={{ duckdns_token }}&ip=" | curl -k -o /opt/duckdns/log -K -
 
@@ -1115,3 +1148,199 @@
 
   roles:
     - samba
+
+- name: Configure phantom
+  hosts: phantom
+  gather_facts: yes
+
+  vars:
+    ansible_python_interpreter: /usr/bin/python3
+
+  vars_files:
+    - env.yaml
+
+  tasks:
+    - name: Install needed packages
+      ansible.builtin.apt:
+        pkg:
+          - ca-certificates
+          - curl
+          - wget
+          - cron
+          - rsync
+
+    - name: Ensure the keyring path exists with the correct permissions
+      ansible.builtin.file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: '0755'
+
+    - name: Download Docker Debian GPG key
+      ansible.builtin.get_url:
+        url: https://download.docker.com/linux/debian/gpg
+        dest: /etc/apt/keyrings/docker.asc
+        mode: '0644'
+
+    - name: Add Docker repository
+      ansible.builtin.deb822_repository:
+        name: docker
+        types: [deb]
+        uris: [https://download.docker.com/linux/debian]
+        suites: ["{{ ansible_facts['distribution_release'] }}"]
+        components: [stable]
+        architectures: ["{{ 'amd64' if ansible_facts['architecture'] == 'x86_64' else ansible_facts['architecture'] }}"]
+        signed_by: /etc/apt/keyrings/docker.asc
+
+    - name: Update APT cache
+      ansible.builtin.apt:
+        update_cache: yes
+
+    - name: Install Docker packages
+      ansible.builtin.apt:
+        pkg:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-buildx-plugin
+          - docker-compose-plugin
+          - python3-docker
+        update_cache: yes
+
+    - name: Ensure Docker service is running
+      ansible.builtin.service:
+        name: docker
+        state: started
+        enabled: true
+
+    - name: Ensure the /opt/docker/caddy dir exists
+      ansible.builtin.file:
+        path: /opt/docker/caddy
+        state: directory
+        mode: '0755'
+
+    - name: Create /opt/duckdns dir
+      ansible.builtin.file:
+        path: /opt/duckdns
+        state: directory
+        mode: '0755'
+
+    - name: Create DuckDNS update script
+      ansible.builtin.copy:
+        dest: /opt/duckdns/update.sh
+        mode: '0755'
+        content: |
+          #!/usr/bin/env bash
+          # Managed by Ansible
+          echo url="https://www.duckdns.org/update?domains=7068616e746f6d&token={{ duckdns_token }}&ip=" | curl -k -o /opt/duckdns/log -K -
+
+    - name: Create DuckDNS Cron job
+      ansible.builtin.cron:
+        name: "Update DuckDNS IP"
+        minute: "*/5"
+        job: "/opt/duckdns/update.sh >/dev/null 2>&1"
+
+    - name: Create caddy_net network with static IPv4 and IPv6
+      community.docker.docker_network:
+        name: caddy_net
+        state: present
+        enable_ipv6: true
+        ipam_config:
+          - subnet: "172.20.0.0/24"
+            gateway: "172.20.0.1"
+          - subnet: "fdcc:ad94:bacf:6120::/64"
+            gateway: "fdcc:ad94:bacf:6120::1"
+
+    - name: Change Docker DNS
+      ansible.builtin.copy:
+        dest: /etc/docker/daemon.json
+        mode: '0644'
+        content: |
+          {
+            "ipv6": true,
+            "fixed-cidr-v6": "fdcc:ad94:bacf:6110::/64",
+            "dns": ["192.168.15.4", "fd5d:d97c:25d5:1::4"]
+          }
+      notify: Restart Docker
+
+    - name: Create caddy docker-compose.yml
+      ansible.builtin.copy:
+        dest: "/opt/docker/caddy/docker-compose.yml"
+        mode: '0644'
+        content: |
+          services:
+            caddy:
+              build:
+                context: .
+                dockerfile_inline: |
+                  FROM caddy:builder AS builder
+                  RUN xcaddy build --with github.com/caddy-dns/duckdns
+                  FROM caddy:latest
+                  COPY --from=builder /usr/bin/caddy /usr/bin/caddy
+              container_name: caddy
+              restart: unless-stopped
+              networks:
+                caddy_net:
+                  aliases:
+                    - caddy
+              ports:
+                - "80:80"
+                - "443:443"
+                - "443:443/udp"
+              volumes:
+                - ./Caddyfile:/etc/caddy/Caddyfile
+                - caddy_data:/data
+                - caddy_config:/config
+                - /srv/www:/srv/www
+
+          networks:
+            caddy_net:
+              external: true
+
+          volumes:
+            caddy_data:
+            caddy_config:
+
+    - name: Get caddy pwd hash
+      ansible.builtin.command: docker run --rm caddy:latest caddy hash-password --plaintext "{{ phantom_caddy_pwd }}"
+      register: caddy_hash_output
+      changed_when: false
+      no_log: true
+
+    - name: Create /srv/www dir
+      ansible.builtin.file:
+        path: /srv/www
+        state: directory
+        mode: '0755'
+
+    - name: Create Caddyfile
+      ansible.builtin.copy:
+        dest: /opt/docker/caddy/Caddyfile
+        mode: '0644'
+        content: |
+          7068616e746f6d.duckdns.org, *.7068616e746f6d.duckdns.org {
+            tls {
+              dns duckdns {{ duckdns_token }}
+              resolvers 8.8.8.8 8.8.4.4
+            }
+          }
+          browse.7068616e746f6d.duckdns.org {
+            root /srv/www
+            basic_auth {
+              phantom {{ caddy_hash_output.stdout }}
+            }
+            file_server browse
+          }
+
+    - name: Docker Compose Build and Start
+      community.docker.docker_compose_v2:
+        project_src: "/opt/docker/caddy"
+        state: present
+        build: always
+
+  handlers:
+    - name: Restart Docker
+      ansible.builtin.service:
+        name: docker
+        state: restarted
+    - name: Reload Caddyfile
+      ansible.builtin.command: docker exec caddy caddy reload --config /etc/caddy/Caddyfile
