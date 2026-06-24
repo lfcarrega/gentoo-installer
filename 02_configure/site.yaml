@@ -1284,8 +1284,8 @@
                     - caddy
               ports:
                 - "80:80"
-                - "443:443"
-                - "443:443/udp"
+                - "9999:9999"
+                - "9999:9999/udp"
               volumes:
                 - ./Caddyfile:/etc/caddy/Caddyfile
                 - caddy_data:/data
@@ -1317,13 +1317,11 @@
         dest: /opt/docker/caddy/Caddyfile
         mode: '0644'
         content: |
-          7068616e746f6d.duckdns.org, *.7068616e746f6d.duckdns.org {
+          https://7068616e746f6d.duckdns.org:9999 {
             tls {
               dns duckdns {{ duckdns_token }}
               resolvers 8.8.8.8 8.8.4.4
             }
-          }
-          browse.7068616e746f6d.duckdns.org {
             root /srv/www
             basic_auth {
               phantom {{ caddy_hash_output.stdout }}
