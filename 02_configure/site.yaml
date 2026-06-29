@@ -895,6 +895,7 @@
           - docker-buildx-plugin
           - docker-compose-plugin
           - python3-docker
+          - wireguard-tools
         update_cache: yes
 
     - name: Ensure Docker service is running
@@ -1005,8 +1006,12 @@
               file_server
             }
           }
-          gamevault.furtadocarrega.duckdns.org {
-            reverse_proxy gamevault:8080
+          freshrss.furtadocarrega.duckdns.org {
+            reverse_proxy freshrss:443 {
+              transport http {
+                tls_insecure_skip_verify
+              }
+            }
           }
           jellyfin.furtadocarrega.duckdns.org {
             reverse_proxy jellyfin:8096
@@ -1050,7 +1055,7 @@
         - linkding
         - navidrome
         - silverbullet
-        - gamevault
+        - freshrss
 
   handlers:
     - name: Restart systemd-resolved
@@ -1093,6 +1098,7 @@
       ansible.builtin.apt:
         pkg:
           - dnscrypt-proxy
+          - wireguard-tools
 
     - name: Copy dnscrypt-proxy config
       ansible.builtin.copy:
@@ -1130,11 +1136,28 @@
           ListenDatagram=127.0.0.1:5053
       notify: Restart dnscrypt-proxy socket
 
+    - name: Force systemd-resolved config file
+      ansible.builtin.copy:
+        dest: /etc/systemd/resolved.conf
+        backup: yes
+        content: |
+          # Managed by Ansible
+          [Resolve]
+          DNS=127.0.0.1 ::1
+          Domains=~.
+          Cache=no
+      notify: Restart systemd-resolved
+
   handlers:
     - name: Restart dnscrypt-proxy socket
       ansible.builtin.systemd_service:
         name: dnscrypt-proxy.socket
         state: reloaded
+    - name: Restart systemd-resolved
+      ansible.builtin.service:
+        name: systemd-resolved
+        state: restarted
+        enabled: yes
 
 - name: Configure Amigo Samba role
   hosts: amigo
@@ -1148,6 +1171,30 @@
 
   roles:
     - samba
+
+  tasks:
+    - name: Install extra packages
+      ansible.builtin.apt:
+        pkg:
+          - wireguard-tools
+
+    - name: Force systemd-resolved config file
+      ansible.builtin.copy:
+        dest: /etc/systemd/resolved.conf
+        backup: yes
+        content: |
+          # Managed by Ansible
+          [Resolve]
+          DNS=192.168.15.4 fd5d:d97c:25d5:1::4
+          Domains=~.
+          Cache=no
+      notify: Restart systemd-resolved
+  
+    - name: Restart systemd-resolved
+      ansible.builtin.service:
+        name: systemd-resolved
+        state: restarted
+        enabled: yes
 
 - name: Configure phantom
   hosts: phantom
